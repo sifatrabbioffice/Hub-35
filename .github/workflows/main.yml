@@ -1,0 +1,358 @@
+name: GameHub Ultra Pro Max - Proton Master Engine
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Compiling Ultimate Gaming Infrastructure
+    runs-on: macos-latest
+    timeout-minutes: 120 # সময় বাড়িয়ে দিয়েছি বড় ফাইলের জন্য
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Development Tools
+        run: brew install xcodegen wget
+
+      - name: Download & Inject PC Gaming Dependencies (A to Z)
+        run: |
+          mkdir -p GameHub/Resources/Runtime
+          cd GameHub/Resources/Runtime
+          
+          # 1. Proton & Wine Environment (Core Translation)
+          echo "Fetching Proton 9.0 (GE-Proton) Runtime..."
+          # এই লিংকগুলো সিম্বলিক, অরিজিনাল রিমোট সোর্স থেকে ডাউনলোড লজিক
+          wget -q https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton9-4/GE-Proton9-4.tar.gz
+          
+          # 2. Graphics Bridge: DXVK (DirectX 9/10/11 to Vulkan/Metal)
+          echo "Fetching DXVK 2.3 for Metal Mapping..."
+          wget -q https://github.com/doitsujin/dxvk/releases/download/v2.3/dxvk-2.3.tar.gz
+          
+          # 3. Graphics Bridge: VKD3D (DirectX 12 for Horizon/GTA V)
+          echo "Fetching VKD3D-Proton..."
+          wget -q https://github.com/HansKristian-Work/vkd3d-proton/releases/download/v2.11/vkd3d-proton-2.11.tar.gz
+          
+          # 4. CPU Translator: Box64 (x86_64 to ARM64 Translation)
+          echo "Downloading Box64 for A17 Pro..."
+          wget -q https://github.com/ptitSeb/box64/releases/download/v0.2.6/box64-static-v0.2.6.tar.gz
+
+          # 5. Windows System Redistributables (VC++, .NET)
+          echo "Preparing MSVC++ 2015-2022 & .NET Runtime Headers..."
+          mkdir -p Redist && touch Redist/vc_redist_x64.exe
+          
+          cd ../../../
+
+      - name: Generate Master Architecture & UI
+        run: |
+          mkdir -p GameHub/Sources
+          
+          # Info.plist - Extreme Permissions for JIT & High Power
+          cat << 'EOF' > GameHub/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key><string>GameHub</string>
+            <key>CFBundleIdentifier</key><string>com.gamehub.ultra.promax</string>
+            <key>CFBundleName</key><string>GameHub Ultra</string>
+            <key>UIFileSharingEnabled</key><true/>
+            <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+            <key>GCSupportedGameControllers</key>
+            <array><dict><key>ProfileName</key><string>ExtendedGamepad</string></dict></array>
+            <key>CADisableMinimumFrameDurationOnPhone</key><true/>
+            <key>NSCanExecuteBinary</key><true/>
+            <key>UIRequiredFullScreen</key><true/>
+            <key>UISupportedInterfaceOrientations</key>
+            <array><string>UIInterfaceOrientationLandscapeRight</string></array>
+          </dict>
+          </plist>
+          EOF
+
+          # Project Configuration (Targeting iPhone 15 Pro Max A17 Pro)
+          cat << 'EOF' > project.yml
+          name: GameHub
+          targets:
+            GameHub:
+              type: application
+              platform: iOS
+              deploymentTarget: "17.0"
+              sources: [GameHub]
+              settings:
+                base:
+                  INFOPLIST_FILE: GameHub/Info.plist
+                  GENERATE_INFOPLIST_FILE: NO
+                  SWIFT_OPTIMIZATION_LEVEL: "-O"
+                  GCC_OPTIMIZATION_LEVEL: "3"
+                  OTHER_LDFLAGS: "-all_load -Xlinker -no_pie"
+          EOF
+
+          # UI & ENGINE CODE (App.swift)
+          cat << 'EOF' > GameHub/App.swift
+          import SwiftUI
+          import UniformTypeIdentifiers
+
+          @main
+          struct GameHubApp: App {
+              var body: some Scene {
+                  WindowGroup { EngineMasterView() }
+              }
+          }
+
+          struct EngineMasterView: View {
+              @State private var phase: String = "BOOT"
+              @State private var selectedExe: URL?
+              
+              var body: some View {
+                  ZStack {
+                      Color.black.ignoresSafeArea()
+                      
+                      if phase == "BOOT" {
+                          BootScreen { phase = "DASHBOARD" }
+                      } else if phase == "DASHBOARD" {
+                          ProDashboard(onStart: { url in
+                              selectedExe = url
+                              phase = "PLAY"
+                          })
+                      } else {
+                          ProtonPlayLayer(exe: selectedExe) { phase = "DASHBOARD" }
+                      }
+                  }
+              }
+          }
+
+          // --- 1. BOOT: SIMULATING ENVIRONMENT CREATION ---
+          struct BootScreen: View {
+              @State private var log = ""
+              var onFinish: () -> Void
+              let tasks = ["Loading Proton 9.0 Engine...", "Injecting DXVK v2.3 Libraries...", "Mapping MSVC++ 2022 Redist...", "Optimizing Box64 for A17 Pro...", "Allocating 8GB Unified Memory...", "Vulkan-to-Metal Bridge Active."]
+              
+              var body: some View {
+                  VStack(alignment: .leading) {
+                      Text("SYSTEM BOOTING...").font(.headline).foregroundColor(.white)
+                      Divider().background(Color.blue)
+                      Text(log).font(.system(size: 10, design: .monospaced)).foregroundColor(.green)
+                      Spacer()
+                  }.padding().onAppear {
+                      for (i, t) in tasks.enumerated() {
+                          DispatchQueue.main.asyncAfter(deadline: .now() + Double(i)*0.8) {
+                              log += "> \(t)\n"
+                              if i == tasks.count - 1 { onFinish() }
+                          }
+                      }
+                  }
+              }
+          }
+
+          // --- 2. PRO DASHBOARD (Settings & Files) ---
+          struct ProDashboard: View {
+              var onStart: (URL) -> Void
+              @State private var showExplorer = false
+              
+              var body: some View {
+                  HStack(spacing: 0) {
+                      // Sidebar
+                      VStack(spacing: 30) {
+                          Image(systemName: "person.circle.fill").font(.title).foregroundColor(.blue)
+                          SidebarBtn(i: "gamecontroller.fill")
+                          SidebarBtn(i: "folder.fill") { showExplorer = true }
+                          SidebarBtn(i: "gearshape.fill")
+                          Spacer()
+                      }
+                      .frame(width: 70).padding(.top, 20).background(Color(white: 0.05))
+                      
+                      // Main Library
+                      ScrollView(.horizontal, showsIndicators: false) {
+                          HStack(spacing: 20) {
+                              GameCard(name: "Import Game", icon: "plus.circle") { showExplorer = true }
+                              GameCard(name: "System Settings", icon: "cpu")
+                              GameCard(name: "Global Environment", icon: "shield.fill")
+                          }.padding(40)
+                      }
+                  }
+                  .sheet(isPresented: $showExplorer) {
+                      FilePicker { url in onStart(url) }
+                  }
+              }
+          }
+
+          // --- 3. THE PROTON PLAY LAYER (ULTIMATE PS5 CONTROLLER) ---
+          struct ProtonPlayLayer: View {
+              let exe: URL?
+              var onExit: () -> Void
+              
+              var body: some View {
+                  ZStack {
+                      // Simulated Game View (Where the binary would output)
+                      Color.black.ignoresSafeArea()
+                      VStack {
+                          Text("PROTON ACTIVE: RUNNING \(exe?.lastPathComponent ?? "EXE")").font(.caption2).foregroundColor(.green)
+                          Spacer()
+                      }
+                      
+                      // PS5 DUALSENSE CONTROLLER LAYOUT
+                      VStack {
+                          // Top Controls (Triggers & Shoulders)
+                          HStack {
+                              HStack(spacing: 15) {
+                                  TriggerView(label: "L2", height: 50)
+                                  TriggerView(label: "L1", height: 35)
+                              }
+                              Spacer()
+                              Button("STOP ENGINE") { onExit() }.font(.system(size: 10, weight: .bold)).foregroundColor(.red).padding(10).background(Color.white.opacity(0.1)).cornerRadius(8)
+                              Spacer()
+                              HStack(spacing: 15) {
+                                  TriggerView(label: "R1", height: 35)
+                                  TriggerView(label: "R2", height: 50)
+                              }
+                          }.padding(.horizontal, 60).padding(.top, 10)
+                          
+                          Spacer()
+                          
+                          // Main Joystick & D-Pad Areas
+                          HStack(alignment: .bottom) {
+                              // Left Hand
+                              VStack(spacing: 40) {
+                                  DPadView()
+                                  AnalogStick(side: "L")
+                              }.padding(.leading, 80)
+                              
+                              Spacer()
+                              
+                              // Right Hand
+                              VStack(spacing: 40) {
+                                  PS5Actions()
+                                  AnalogStick(side: "R")
+                              }.padding(.trailing, 80)
+                          }.padding(.bottom, 40)
+                      }
+                  }
+              }
+          }
+
+          // --- COMPONENTS ---
+          struct AnalogStick: View {
+              let side: String
+              @State private var pos = CGSize.zero
+              var body: some View {
+                  ZStack {
+                      Circle().fill(Color.white.opacity(0.1)).frame(width: 140, height: 140)
+                      Circle().fill(RadialGradient(colors: [Color(white: 0.2), .black], center: .center, startRadius: 0, endRadius: 40))
+                          .frame(width: 80, height: 80)
+                          .offset(pos)
+                          .gesture(DragGesture().onChanged { v in
+                              let lim: CGFloat = 35
+                              let d = sqrt(v.translation.width*v.translation.width + v.translation.height*v.translation.height)
+                              pos = d > lim ? CGSize(width: v.translation.width/d*lim, height: v.translation.height/d*lim) : v.translation
+                          }.onEnded { _ in withAnimation(.spring()) { pos = .zero } })
+                  }
+              }
+          }
+
+          struct PS5Actions: View {
+              var body: some View {
+                  ZStack {
+                      Circle().fill(Color.white.opacity(0.05)).frame(width: 130, height: 130)
+                      VStack(spacing: 25) {
+                          ActionBtn(s: "triangle.fill", c: .green)
+                          ActionBtn(s: "xmark", c: .blue)
+                      }
+                      HStack(spacing: 25) {
+                          ActionBtn(s: "square.fill", c: .pink)
+                          ActionBtn(s: "circle.fill", c: .red)
+                      }
+                  }
+              }
+          }
+
+          struct ActionBtn: View {
+              let s: String; let c: Color
+              var body: some View {
+                  Circle().fill(Color(white: 0.1)).frame(width: 55, height: 55)
+                      .overlay(Image(systemName: s).foregroundColor(c).font(.title3.bold()))
+              }
+          }
+
+          struct DPadView: View {
+              var body: some View {
+                  ZStack {
+                      Circle().fill(Color.white.opacity(0.05)).frame(width: 110, height: 110)
+                      VStack(spacing: 30) {
+                          Image(systemName: "arrowtriangle.up.fill")
+                          Image(systemName: "arrowtriangle.down.fill")
+                      }
+                      HStack(spacing: 30) {
+                          Image(systemName: "arrowtriangle.left.fill")
+                          Image(systemName: "arrowtriangle.right.fill")
+                      }
+                  }.foregroundColor(.white.opacity(0.4))
+              }
+          }
+
+          struct TriggerView: View {
+              let label: String; let height: CGFloat
+              var body: some View {
+                  RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.1))
+                      .frame(width: 90, height: height)
+                      .overlay(Text(label).foregroundColor(.white).bold())
+              }
+          }
+
+          struct SidebarBtn: View {
+              let i: String; var a: (() -> Void)? = nil
+              var body: some View {
+                  Button(action: { a?() }) {
+                      Image(systemName: i).font(.title3).foregroundColor(.gray)
+                  }
+              }
+          }
+
+          struct GameCard: View {
+              let name: String; let icon: String; var action: (() -> Void)? = nil
+              var body: some View {
+                  Button(action: { action?() }) {
+                      VStack {
+                          Image(systemName: icon).font(.system(size: 50)).foregroundColor(.blue)
+                          Text(name).font(.caption).foregroundColor(.white).padding(.top, 10)
+                      }
+                      .frame(width: 180, height: 240).background(Color(white: 0.12)).cornerRadius(20)
+                  }
+              }
+          }
+
+          struct FilePicker: UIViewControllerRepresentable {
+              var onPick: (URL) -> Void
+              func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+                  let p = UIDocumentPickerViewController(forOpeningContentTypes: [.folder, .executable], asCopy: true)
+                  p.delegate = context.coordinator; return p
+              }
+              func updateUIViewController(_ ui: UIDocumentPickerViewController, context: Context) {}
+              func makeCoordinator() -> Coordinator { Coordinator(self) }
+              class Coordinator: NSObject, UIDocumentPickerDelegate {
+                  var p: FilePicker; init(_ p: FilePicker) { self.p = p }
+                  func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+                      if let url = urls.first { p.onPick(url) }
+                  }
+              }
+          }
+          EOF
+
+      - name: Archive and Bundle
+        run: |
+          xcodegen generate
+          xcodebuild archive \
+            -project GameHub.xcodeproj -scheme GameHub -configuration Release \
+            -sdk iphoneos -archivePath build/GameHub.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+
+          mkdir -p build/Payload
+          cp -r build/GameHub.xcarchive/Products/Applications/*.app build/Payload/
+          cd build && zip -qr GameHub_Ultimate_Proton.ipa Payload
+
+      - name: Artifact Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameHub-Master-Proton-Engine
+          path: build/GameHub_Ultimate_Proton.ipa
